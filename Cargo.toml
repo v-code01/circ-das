@@ -1,0 +1,18 @@
+[package]
+name = "circ-das"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "First measured d/n-vs-rate curve for block-circulant local codes vs 2D Reed-Solomon for blockchain data availability."
+
+[[bin]]
+name = "spike"
+path = "src/bin/spike.rs"
+
+[lib]
+name = "circ_das"
+path = "src/lib.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
