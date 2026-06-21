@@ -9,3 +9,4 @@
 pub mod gf256;
 pub mod grs;
 pub mod block_circulant;
+pub mod rs2d;
