@@ -126,20 +126,43 @@ pub struct Grs {
 }
 
 impl Grs {
-    /// Build a GRS code over `n0` distinct evaluation points (must be distinct and
-    /// nonzero-safe; we use g^0, g^1, ... which are all distinct for n0 <= 255).
+    /// Build a GRS code over the default `n0` distinct evaluation points g^0..g^{n0-1}.
     pub fn new(f: &Gf256, n0: usize, k0: usize) -> Self {
+        let points: Vec<u8> = (0..n0).map(|j| f.exp_g(j)).collect();
+        Grs::with_points(f, &points, k0)
+    }
+
+    /// Build a GRS code over DISTINCT points with parity-check powers 0..rho-1.
+    pub fn with_points(f: &Gf256, points: &[u8], k0: usize) -> Self {
+        Grs::with_points_offset(f, points, k0, 0)
+    }
+
+    /// Build a GRS code over DISTINCT points whose parity-check rows use the SHIFTED
+    /// power window [offset .. offset+rho-1]:  H[r][j] = points[j]^(offset + r).
+    ///
+    /// This is a genuine GRS code (equivalently, column multipliers m_j = points[j]^offset
+    /// times a standard Vandermonde), hence still MDS [n0,k0,rho+1]. The offset is the
+    /// mechanism (playing the role of the paper's diagonal M matrices) that makes two
+    /// overlapping local codes impose INDEPENDENT constraints on a shared block: with
+    /// offsets 0 and rho, a shared block of omega symbols sees the full power window
+    /// 0..2*rho-1, so the combined 2*rho constraints have rank omega and kill the
+    /// spurious low-weight codewords that a plain RS (offset always 0) would admit.
+    pub fn with_points_offset(f: &Gf256, points: &[u8], k0: usize, offset: usize) -> Self {
+        let n0 = points.len();
         assert!(n0 <= 255, "GF(2^8) supports codes of length <= 255");
         assert!(k0 <= n0);
+        for a in 0..n0 {
+            for b in (a + 1)..n0 {
+                assert!(points[a] != points[b], "GRS evaluation points must be distinct");
+            }
+        }
         let rho = n0 - k0;
-        let points: Vec<u8> = (0..n0).map(|j| f.exp_g(j)).collect();
-        // Distinctness of points (g^j for j<255 are distinct).
         let mut h = vec![vec![0u8; n0]; rho];
-        for (i, row) in h.iter_mut().enumerate() {
+        for (r, row) in h.iter_mut().enumerate() {
             for (j, cell) in row.iter_mut().enumerate() {
-                // points[j]^i
+                // points[j]^(offset + r)
                 let mut acc = 1u8;
-                for _ in 0..i {
+                for _ in 0..(offset + r) {
                     acc = f.mul(acc, points[j]);
                 }
                 *cell = acc;
