@@ -37,7 +37,7 @@ impl BlockCirculant {
     /// (GF(2^8) distinct points) and mu >= 2 (cyclic topology).
     pub fn new(f: &Gf256, mu: usize, omega: usize, rho: usize) -> Self {
         assert!(mu >= 2, "block-circulant topology needs mu >= 2 local codes");
-        assert!(mu % 2 == 0, "lambda=2 block-circulant uses mu = 2*nu (even)");
+        assert!(mu.is_multiple_of(2), "lambda=2 block-circulant uses mu = 2*nu (even)");
         let n = mu * (rho + omega);
         assert!(n <= 255, "global length {n} exceeds GF(2^8) distinct points");
         // Distinct global points g^0..g^{n-1}.
@@ -67,7 +67,7 @@ impl BlockCirculant {
     fn local_code(&self, f: &Gf256, i: usize) -> (Grs, Vec<usize>) {
         let sup = self.support(i);
         let pts: Vec<u8> = sup.iter().map(|&g| self.points[g]).collect();
-        let offset = if i % 2 == 0 { 0 } else { self.rho };
+        let offset = if i.is_multiple_of(2) { 0 } else { self.rho };
         (Grs::with_points_offset(f, &pts, 2 * self.omega, offset), sup)
     }
 

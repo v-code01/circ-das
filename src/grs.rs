@@ -19,8 +19,10 @@ use crate::gf256::{add, Gf256};
 /// `a` is `rows` x `cols` row-major. `b` has length `rows`. Returns:
 ///   - `Some(x)` (length `cols`) if the system is consistent AND has a unique
 ///     solution (rank == cols). Free variables / inconsistency return `None`.
+///
 /// This is exactly the condition we need for erasure recovery: a unique fill-in of
 /// the erased symbols exists iff the erased-column submatrix has full column rank.
+#[allow(clippy::needless_range_loop)] // index-coupled dual-array Gaussian elimination
 pub fn solve(f: &Gf256, a: &mut [Vec<u8>], b: &mut [u8], cols: usize) -> Option<Vec<u8>> {
     let rows = a.len();
     let mut pivot_row = 0usize;
@@ -60,7 +62,7 @@ pub fn solve(f: &Gf256, a: &mut [Vec<u8>], b: &mut [u8], cols: usize) -> Option<
         pivot_row += 1;
     }
     // Every column must have a pivot for a unique solution.
-    if where_pivot.iter().any(|&w| w == usize::MAX) {
+    if where_pivot.contains(&usize::MAX) {
         return None;
     }
     // Consistency: rows beyond rank must have b == 0.
@@ -77,6 +79,7 @@ pub fn solve(f: &Gf256, a: &mut [Vec<u8>], b: &mut [u8], cols: usize) -> Option<
 }
 
 /// Rank of a `rows` x `cols` GF(2^8) matrix (row-major), by Gaussian elimination.
+#[allow(clippy::needless_range_loop)] // index-coupled dual-array Gaussian elimination
 pub fn rank(f: &Gf256, mat: &[Vec<u8>]) -> usize {
     let mut a: Vec<Vec<u8>> = mat.to_vec();
     let rows = a.len();
@@ -189,10 +192,8 @@ impl Grs {
         let erased: Vec<usize> = (self.k0..self.n0).collect();
         let mut cw = vec![0u8; self.n0];
         cw[..self.k0].copy_from_slice(data);
-        let filled = self
-            .recover(f, &cw, &erased)
-            .expect("systematic parity is always solvable (rho independent columns)");
-        filled
+        self.recover(f, &cw, &erased)
+            .expect("systematic parity is always solvable (rho independent columns)")
     }
 
     /// Erasure recovery: given a codeword `cw` (erased positions may hold any value)
@@ -230,6 +231,50 @@ impl Grs {
         }
         Some(out)
     }
+}
+
+/// Empirical minimum distance of a linear code from its parity-check matrix H:
+/// d = smallest number of columns of H that are linearly dependent.
+/// (Equivalently d-1 = largest t such that every t columns are independent = the
+/// erasure-correction threshold.) Enumerates column subsets by increasing size;
+/// intended for SMALL codes only (n0 up to ~30).
+pub fn min_distance_from_h(f: &Gf256, h: &[Vec<u8>], n0: usize) -> usize {
+    let rho = h.len();
+    // Any (rho+1) columns are dependent (rho rows) => d <= rho+1 always.
+    let upper = rho + 1;
+    for t in 1..=upper {
+        let mut idx = vec![0usize; t];
+        if subset_has_dependent(f, h, n0, &mut idx, 0, 0) {
+            return t;
+        }
+    }
+    upper
+}
+
+fn subset_has_dependent(
+    f: &Gf256,
+    h: &[Vec<u8>],
+    n0: usize,
+    idx: &mut Vec<usize>,
+    start: usize,
+    depth: usize,
+) -> bool {
+    if depth == idx.len() {
+        // Build rho x t submatrix; dependent iff rank < t.
+        let t = idx.len();
+        let sub: Vec<Vec<u8>> = h
+            .iter()
+            .map(|row| idx.iter().map(|&j| row[j]).collect())
+            .collect();
+        return rank(f, &sub) < t;
+    }
+    for j in start..n0 {
+        idx[depth] = j;
+        if subset_has_dependent(f, h, n0, idx, j + 1, depth + 1) {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]
@@ -291,50 +336,4 @@ mod tests {
         let d = crate::grs::min_distance_from_h(&f, code.h(), code.n0);
         assert_eq!(d, code.rho + 1);
     }
-}
-
-/// Empirical minimum distance of a linear code from its parity-check matrix H:
-/// d = smallest number of columns of H that are linearly dependent.
-/// (Equivalently d-1 = largest t such that every t columns are independent = the
-/// erasure-correction threshold.) Enumerates column subsets by increasing size;
-/// intended for SMALL codes only (n0 up to ~30). Returns n0+1 if H has full column
-/// rank in every subset (i.e., trivial code), which does not occur for our codes.
-pub fn min_distance_from_h(f: &Gf256, h: &[Vec<u8>], n0: usize) -> usize {
-    let rho = h.len();
-    // Any (rho+1) columns are dependent (rho rows) => d <= rho+1 always.
-    let upper = rho + 1;
-    for t in 1..=upper {
-        // enumerate subsets of size t of {0..n0}
-        let mut idx = vec![0usize; t];
-        if subset_has_dependent(f, h, n0, &mut idx, 0, 0) {
-            return t;
-        }
-    }
-    upper
-}
-
-fn subset_has_dependent(
-    f: &Gf256,
-    h: &[Vec<u8>],
-    n0: usize,
-    idx: &mut Vec<usize>,
-    start: usize,
-    depth: usize,
-) -> bool {
-    if depth == idx.len() {
-        // Build rho x t submatrix; dependent iff rank < t.
-        let t = idx.len();
-        let sub: Vec<Vec<u8>> = h
-            .iter()
-            .map(|row| idx.iter().map(|&j| row[j]).collect())
-            .collect();
-        return rank(f, &sub) < t;
-    }
-    for j in start..n0 {
-        idx[depth] = j;
-        if subset_has_dependent(f, h, n0, idx, j + 1, depth + 1) {
-            return true;
-        }
-    }
-    false
 }

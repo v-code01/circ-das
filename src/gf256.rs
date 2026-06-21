@@ -31,6 +31,12 @@ const fn xtime(a: u16) -> u16 {
     }
 }
 
+impl Default for Gf256 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Gf256 {
     /// Build the tables. Panics if g=2 does not have full period (it does for 0x11D).
     pub fn new() -> Self {
