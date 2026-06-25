@@ -122,6 +122,35 @@ impl BlockCirculant {
         cw
     }
 
+    /// Per-block systematic generator matrices for the throughput (shard) encoder.
+    ///
+    /// Returns `mu` matrices, each `rho x (2*omega)`. For parity block `i`, parity
+    /// symbol `r` is `sum_c gen[i][r][c] * data[c]`, where `data` is the concatenation
+    /// of the two message blocks that feed local code `i`: `[ S_{i-1} | S_i ]`.
+    ///
+    /// Extracted by pushing unit data vectors through the same tested local GRS that
+    /// `encode` uses, so the generator is guaranteed byte-identical to `encode`'s parity
+    /// (verified by the `shard_l1_matches_reference_encode` test in `neon.rs`).
+    pub fn local_generators(&self, f: &Gf256) -> Vec<Vec<Vec<u8>>> {
+        let two_omega = 2 * self.omega;
+        let mut gens = Vec::with_capacity(self.mu);
+        for i in 0..self.mu {
+            let (local, _sup) = self.local_code(f, i);
+            let mut g = vec![vec![0u8; two_omega]; self.rho];
+            for c in 0..two_omega {
+                let mut unit = vec![0u8; two_omega];
+                unit[c] = 1;
+                let cw = local.encode_systematic(f, &unit);
+                // Parity occupies positions [2*omega .. 2*omega+rho) of the local codeword.
+                for (r, grow) in g.iter_mut().enumerate() {
+                    grow[c] = cw[two_omega + r];
+                }
+            }
+            gens.push(g);
+        }
+        gens
+    }
+
     /// Build the global block-circulant parity-check matrix H_BC of size
     /// (mu*rho) x n. Row block i carries local code i's rho GRS checks mapped onto
     /// the global coordinates of [S_{i-1}, S_i, P_i].
