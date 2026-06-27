@@ -251,6 +251,54 @@ pub fn min_distance_from_h(f: &Gf256, h: &[Vec<u8>], n0: usize) -> usize {
     upper
 }
 
+/// The actual column indices of a SMALLEST linearly-dependent set of parity-check
+/// columns of `h` (length-`n0` code). This set is exactly the support of a
+/// minimum-weight codeword, so `|result| == d` (the minimum distance) and it is the
+/// SMALLEST set of coordinates that is NOT erasure-correctable by the global decoder.
+///
+/// This is the WORST-CASE data-availability adversary: withholding precisely these
+/// `d` symbols is the cheapest way to make a block unrecoverable (withholding fewer
+/// is recoverable; withholding a larger/scattered set is easier for a sampler to
+/// detect). Searches by increasing size, so the first hit is genuinely minimal.
+/// For SMALL codes only (n0 up to ~30), same envelope as `min_distance_from_h`.
+pub fn min_weight_support(f: &Gf256, h: &[Vec<u8>], n0: usize) -> Vec<usize> {
+    let rho = h.len();
+    // Any (rho+1) columns are dependent (only rho rows) => a set of size <= rho+1 exists.
+    for t in 1..=(rho + 1) {
+        let mut idx = vec![0usize; t];
+        if let Some(found) = smallest_dependent_at_size(f, h, n0, &mut idx, 0, 0) {
+            return found;
+        }
+    }
+    unreachable!("a code with {rho} checks always has a dependent column set of size <= {}", rho + 1)
+}
+
+/// Recurse over size-`idx.len()` column subsets; return the FIRST that is dependent.
+fn smallest_dependent_at_size(
+    f: &Gf256,
+    h: &[Vec<u8>],
+    n0: usize,
+    idx: &mut Vec<usize>,
+    start: usize,
+    depth: usize,
+) -> Option<Vec<usize>> {
+    if depth == idx.len() {
+        let t = idx.len();
+        let sub: Vec<Vec<u8>> = h
+            .iter()
+            .map(|row| idx.iter().map(|&j| row[j]).collect())
+            .collect();
+        return if rank(f, &sub) < t { Some(idx.clone()) } else { None };
+    }
+    for j in start..n0 {
+        idx[depth] = j;
+        if let Some(found) = smallest_dependent_at_size(f, h, n0, idx, j + 1, depth + 1) {
+            return Some(found);
+        }
+    }
+    None
+}
+
 fn subset_has_dependent(
     f: &Gf256,
     h: &[Vec<u8>],
@@ -335,5 +383,26 @@ mod tests {
         let code = Grs::new(&f, 10, 6); // rho=4 => d=5
         let d = crate::grs::min_distance_from_h(&f, code.h(), code.n0);
         assert_eq!(d, code.rho + 1);
+    }
+
+    #[test]
+    fn min_weight_support_has_size_d_and_is_dependent() {
+        // The returned support has size == d and its columns are genuinely dependent
+        // (rank < size), while every proper subset (size d-1) is independent.
+        let f = Gf256::new();
+        let code = Grs::new(&f, 10, 6); // rho=4 => d=5
+        let h = code.h();
+        let sup = crate::grs::min_weight_support(&f, h, code.n0);
+        let d = crate::grs::min_distance_from_h(&f, h, code.n0);
+        assert_eq!(sup.len(), d, "support size must equal minimum distance");
+        // Dependent: rank of the selected columns is strictly less than their count.
+        let sub: Vec<Vec<u8>> = h.iter().map(|row| sup.iter().map(|&j| row[j]).collect()).collect();
+        assert!(rank(&f, &sub) < sup.len(), "min-weight support columns must be dependent");
+        // Minimality witness: dropping any one column leaves an independent set.
+        for drop in 0..sup.len() {
+            let kept: Vec<usize> = sup.iter().enumerate().filter(|&(i, _)| i != drop).map(|(_, &j)| j).collect();
+            let subk: Vec<Vec<u8>> = h.iter().map(|row| kept.iter().map(|&j| row[j]).collect()).collect();
+            assert_eq!(rank(&f, &subk), kept.len(), "size-(d-1) subset must be independent (recoverable)");
+        }
     }
 }

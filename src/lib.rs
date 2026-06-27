@@ -11,3 +11,4 @@ pub mod grs;
 pub mod block_circulant;
 pub mod rs2d;
 pub mod neon;
+pub mod das;
