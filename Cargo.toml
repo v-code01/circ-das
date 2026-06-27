@@ -9,6 +9,10 @@ description = "First measured d/n-vs-rate curve for block-circulant local codes 
 name = "spike"
 path = "src/bin/spike.rs"
 
+[[bin]]
+name = "das_bench"
+path = "src/bin/das_bench.rs"
+
 [lib]
 name = "circ_das"
 path = "src/lib.rs"
