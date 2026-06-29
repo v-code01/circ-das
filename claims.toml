@@ -1,0 +1,70 @@
+# Claims manifest for circ-das.
+# One [[claim]] per README finding. Every `evidence` substring below is verified to
+# literally appear in at least one of the claim's `files` (antivapor gate requirement).
+
+[project]
+name = "circ-das"
+summary = "First implementation and honest measurement of block-circulant local codes (arXiv:2406.12160) for blockchain data availability: NEON GF(2^8) encoder, coded-Merkle DAS sampler, global Gaussian erasure decoder. Rust, Apple M4."
+level = "novel primitive, not a proven breakthrough"
+
+# ---------------------------------------------------------------------------
+# README Finding 1: relative minimum distance d/n
+# ---------------------------------------------------------------------------
+[[claim]]
+id = "dn-highrate-advantage"
+statement = "Block-circulant (lambda=2, mu=16, k=1024) attains strictly larger relative minimum distance d/n than 2D Reed-Solomon at high rate: 1.70x at R=0.90 and 1.78x at R=0.95, reproducing the paper's 1.35x point. Crossover at R~0.67 (2D-RS wins below it). The win is mu-dependent, holding iff mu < mu*(R)=2(1+sqrt R)/(1-sqrt R). Distances are MDS formulas confirmed empirically on small GF(2^8) instances."
+files = ["bench_results/dn.md", "bench_results/spike.md"]
+evidence = [
+  "block-circulant (lambda=2) achieves strictly larger d/n than 2D Reed-Solomon",
+  "1.78x by R=0.95",
+  "crossover is at **R ~ 0.67**",
+  "mu < mu*(R) = 2 (1 + sqrt R) / (1 - sqrt R)",
+  "BC/2D-RS d/n = 1.35x",
+]
+
+# ---------------------------------------------------------------------------
+# README Finding 2: NEON GF(2^8) encoder throughput
+# ---------------------------------------------------------------------------
+[[claim]]
+id = "neon-encode-13x"
+statement = "The NEON split-nibble vqtbl1q_u8 GF(2^8) encoder runs ~13.1x our own tuned scalar (peak 13.18x) on identical block-circulant work, proven byte-identical (encode_neon == encode_scalar). reed-solomon-simd is a reference point only, not a head-to-head. Scope caveat: the encoder is GF(2^8) while the DA operating point needs GF(2^16); the per-byte ratio transfers because the encode kernel is size-independent."
+files = ["bench_results/throughput.md", "src/neon.rs"]
+evidence = [
+  "NEON beats our own tuned scalar by",
+  "13.18x",
+  "encode_neon == encode_scalar",
+  "vqtbl1q_u8",
+  "size-independent",
+  "GF(2^16), not GF(2^8)",
+]
+
+# ---------------------------------------------------------------------------
+# README Finding 3: DAS sample count
+# ---------------------------------------------------------------------------
+[[claim]]
+id = "das-fewer-samples"
+statement = "For 2^-80 soundness at high rate, block-circulant needs fewer DAS samples than 2D-RS: 4172 vs 7095 at R=0.90 (1.70x fewer), 1.78x fewer at R=0.95. Derived from the deployed global decoder's true threshold d (required_samples in src/das.rs) and tested against the worst-case min-weight codeword-support adversary, not random withholding. Self-audit: R=0.90 miss 8.246e-25 <= 2^-80."
+files = ["bench_results/das.md", "src/das.rs"]
+evidence = [
+  "4172",
+  "7095",
+  "1.70x fewer",
+  "min-weight codeword support",
+  "8.246e-25",
+  "pub fn required_samples",
+]
+
+# ---------------------------------------------------------------------------
+# README sacred invariant: no data loss (erasure recovery)
+# ---------------------------------------------------------------------------
+[[claim]]
+id = "sacred-erasure-recovery"
+statement = "The global Gaussian decoder recovers every erasure pattern of size <= d-1, proven exhaustively over 52,152 patterns (12,950 block-circulant + 39,202 2D-RS), and a size-d min-weight codeword support genuinely does not recover, confirming d is the exact threshold. No iterative decoder is deployed, so no MDS-vs-iterative conflation."
+files = ["tests/invariant_erasure.rs"]
+evidence = [
+  "exhaustive_bc_every_pattern_up_to_d_minus_1_recovers",
+  "12,950",
+  "39,202",
+  "boundary_bc_size_d_codeword_support_does_not_recover",
+  "SACRED INVARIANT VIOLATED",
+]
